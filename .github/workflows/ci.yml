@@ -1,0 +1,38 @@
+name: Security CI/CD Pipeline
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  security-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          fail: true
+
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform/
+          framework: terraform
+          soft_fail: false
+
+      - name: Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          exit-code: 1
+          severity: CRITICAL,HIGH
+
+      - name: Terraform validate
+        uses: hashicorp/setup-terraform@v3
+
+      - run: terraform -chdir=terraform init
+      - run: terraform -chdir=terraform validate
