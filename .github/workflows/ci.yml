@@ -14,11 +14,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Gitleaks
         uses: gitleaks/gitleaks-action@v2
-        with:
-          fail: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: false
 
       - name: Checkov ${{ matrix.env }} (non-prod)
         if: matrix.env != 'prod'
@@ -67,10 +70,10 @@ jobs:
 
       - name: Terraform Plan ${{ matrix.env }} (non-prod)
         if: matrix.env != 'prod'
-        run: terraform -chdir=environments/${{ matrix.env }} plan -no-color
+        run: terraform -chdir=environments/${{ matrix.env }} plan -input=false -no-color
 
       - name: Terraform Plan ${{ matrix.env }} (prod)
         if: matrix.env == 'prod'
         env:
           TF_VAR_rds_password: ${{ secrets.RDS_PASSWORD }}
-        run: terraform -chdir=environments/${{ matrix.env }} plan -no-color
+        run: terraform -chdir=environments/${{ matrix.env }} plan -input=false -no-color
