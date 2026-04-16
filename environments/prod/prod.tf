@@ -134,10 +134,10 @@ resource "aws_security_group" "prod_ec2_sg" {
   }
 
   egress {
-    description = "Allow all egress"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    description = "Allow HTTPS outbound"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -161,11 +161,11 @@ resource "aws_security_group" "prod_rds_sg" {
   }
 
   egress {
-    description = "Allow all egress"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow PostgreSQL outbound to VPC"
+    from_port   = 5432
+    to_port     = 5432
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.prod.cidr_block]
   }
 
   tags = merge(
@@ -188,11 +188,11 @@ resource "aws_security_group" "prod_vpc_endpoint_sg" {
   }
 
   egress {
-    description = "Allow all egress"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow HTTPS outbound to VPC"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [aws_vpc.prod.cidr_block]
   }
 
   tags = merge(
