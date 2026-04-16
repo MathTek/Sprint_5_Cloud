@@ -4,25 +4,45 @@ on:
   push:
   pull_request:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  TF_IN_AUTOMATION: true
+
 jobs:
   security-checks:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, staging, prod]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Gitleaks
         uses: gitleaks/gitleaks-action@v2
-        with:
-          fail: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_COMMENTS: false
 
-      - name: Checkov
+      - name: Checkov ${{ matrix.env }} (non-prod)
+        if: matrix.env != 'prod'
         uses: bridgecrewio/checkov-action@master
         with:
-          directory: terraform/
+          directory: environments/${{ matrix.env }}/
           framework: terraform
-          soft_fail: false
+          soft_fail: true
+
+      - name: Checkov ${{ matrix.env }} (prod)
+        if: matrix.env == 'prod'
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: environments/${{ matrix.env }}/
+          framework: terraform
+          soft_fail: true
 
       - name: Trivy
         uses: aquasecurity/trivy-action@master
@@ -31,8 +51,39 @@ jobs:
           exit-code: 1
           severity: CRITICAL,HIGH
 
-      - name: Terraform validate
+  terraform-validate:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: eu-west-3
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [dev, staging, prod]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - run: terraform -chdir=terraform init
-      - run: terraform -chdir=terraform validate
+      - name: Terraform Init ${{ matrix.env }}
+        run: terraform -chdir=environments/${{ matrix.env }} init -backend=false -input=false 
+
+      - name: Terraform Fmt ${{ matrix.env }}
+        run: terraform -chdir=environments/${{ matrix.env }} fmt -check
+
+      - name: Terraform Validate ${{ matrix.env }}
+        run: terraform -chdir=environments/${{ matrix.env }} validate -no-color
+
+      - name: Terraform Plan ${{ matrix.env }} (non-prod)
+        if: matrix.env != 'prod'
+        run: terraform -chdir=environments/${{ matrix.env }} plan -refresh=false -lock=false -input=false -no-color 
+
+      - name: Terraform Plan ${{ matrix.env }} (prod)
+        if: matrix.env == 'prod'
+        env:
+          TF_VAR_rds_password: ${{ secrets.RDS_PASSWORD }}
+        run: terraform -chdir=environments/${{ matrix.env }} plan -refresh=false -lock=false -input=false -no-color
