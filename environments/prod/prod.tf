@@ -12,14 +12,10 @@ resource "aws_vpc" "prod" {
   )
 }
 
-# ========================================
-# PROD Public Subnets
-# ========================================
-
 resource "aws_subnet" "prod_public" {
   vpc_id                  = aws_vpc.prod.id
   cidr_block              = "10.2.1.0/24"
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
   availability_zone       = "eu-west-3a"
   tags = merge(
     local.prod_tags,
@@ -30,7 +26,7 @@ resource "aws_subnet" "prod_public" {
 resource "aws_subnet" "prod_public_b" {
   vpc_id                  = aws_vpc.prod.id
   cidr_block              = "10.2.2.0/24"
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
   availability_zone       = "eu-west-3b"
   tags = merge(
     local.prod_tags,
@@ -126,11 +122,11 @@ resource "aws_route_table_association" "prod_private_b" {
 
 resource "aws_security_group" "prod_ec2_sg" {
   name        = "prod-ec2-sg"
-  description = "enable only entrance HTTPS traffic"
+  description = "Enable only HTTPS traffic"
   vpc_id      = aws_vpc.prod.id
 
   ingress {
-    description = "HTTPS"
+    description = "HTTPS from Internet"
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
@@ -138,6 +134,7 @@ resource "aws_security_group" "prod_ec2_sg" {
   }
 
   egress {
+    description = "Allow all egress"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -152,7 +149,7 @@ resource "aws_security_group" "prod_ec2_sg" {
 
 resource "aws_security_group" "prod_rds_sg" {
   name        = "prod-rds-sg"
-  description = "Enable only PostgreSQL (5432) traffic from the EC2 SG"
+  description = "Enable PostgreSQL from EC2 only"
   vpc_id      = aws_vpc.prod.id
 
   ingress {
@@ -164,6 +161,7 @@ resource "aws_security_group" "prod_rds_sg" {
   }
 
   egress {
+    description = "Allow all egress"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -190,6 +188,7 @@ resource "aws_security_group" "prod_vpc_endpoint_sg" {
   }
 
   egress {
+    description = "Allow all egress"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -212,6 +211,8 @@ resource "aws_instance" "prod_web" {
   subnet_id              = aws_subnet.prod_public.id
   vpc_security_group_ids = [aws_security_group.prod_ec2_sg.id]
   iam_instance_profile   = aws_iam_instance_profile.prod_ec2_profile.name
+  ebs_optimized          = true
+  monitoring             = true
 
   tags = merge(
     local.prod_tags,
@@ -264,6 +265,39 @@ resource "aws_kms_key" "prod_rds" {
   enable_key_rotation = true
 }
 
+resource "aws_kms_key_policy" "prod_rds" {
+  key_id = aws_kms_key.prod_rds.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions",
+        Effect = "Allow",
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+        },
+        Action   = "kms:*",
+        Resource = "*"
+      },
+      {
+        Sid    = "Allow RDS to use the key",
+        Effect = "Allow",
+        Principal = {
+          Service = "rds.amazonaws.com"
+        },
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey",
+          "kms:CreateGrant",
+          "kms:DescribeKey"
+        ],
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_kms_key" "prod_s3" {
   description         = "KMS key for S3 bucket encryption (Prod)"
   enable_key_rotation = true
@@ -300,6 +334,19 @@ resource "aws_kms_key_policy" "prod_s3" {
             "kms:EncryptionContext:aws:cloudtrail:arn" = "arn:aws:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/*"
           }
         }
+      },
+      {
+        Sid    = "Allow S3 bucket operations",
+        Effect = "Allow",
+        Principal = {
+          Service = "s3.amazonaws.com"
+        },
+        Action = [
+          "kms:Decrypt",
+          "kms:GenerateDataKey",
+          "kms:DescribeKey"
+        ],
+        Resource = "*"
       }
     ]
   })
@@ -324,7 +371,7 @@ resource "aws_s3_bucket_versioning" "prod" {
 
   versioning_configuration {
     status     = "Enabled"
-    mfa_delete = "Enabled"
+    
   }
 }
 
@@ -561,37 +608,6 @@ resource "aws_iam_role_policy" "prod_cloudtrail_logs_policy" {
   })
 }
 
-resource "aws_iam_role" "prod_rds_enhanced_monitoring_role" {
-  name = "prod-rds-enhanced-monitoring-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "monitoring.rds.amazonaws.com"
-        }
-        Action = "sts:AssumeRole"
-      }
-    ]
-  })
-
-  tags = merge(
-    local.prod_tags,
-    { Name = "prod-rds-enhanced-monitoring-role" }
-  )
-}
-
-resource "aws_iam_role_policy_attachment" "prod_rds_enhanced_monitoring" {
-  role       = aws_iam_role.prod_rds_enhanced_monitoring_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole"
-}
-
-# ========================================
-# PROD Monitoring
-# ========================================
-
 resource "aws_cloudtrail" "prod" {
   name                          = "prod-cloudtrail"
   s3_bucket_name                = aws_s3_bucket.prod.id
@@ -613,6 +629,8 @@ resource "aws_cloudtrail" "prod" {
     { Name = "prod-cloudtrail" }
   )
 }
+
+
 
 resource "aws_cloudwatch_metric_alarm" "prod_rds_cpu" {
   alarm_name          = "prod-rds-cpu-utilization"

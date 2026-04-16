@@ -6,7 +6,7 @@
 
 set -e
 
-echo "🚀 Deploying ALL environments (Dev, Staging, Prod)..."
+echo "Deploying ALL environments (Dev, Staging, Prod)..."
 echo ""
 
 # Colors

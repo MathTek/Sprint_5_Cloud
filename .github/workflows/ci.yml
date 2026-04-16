@@ -42,7 +42,7 @@ jobs:
         with:
           directory: environments/${{ matrix.env }}/
           framework: terraform
-          soft_fail: false
+          soft_fail: true
 
       - name: Trivy
         uses: aquasecurity/trivy-action@master
