@@ -53,6 +53,10 @@ jobs:
 
   terraform-validate:
     runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: eu-west-3
     strategy:
       fail-fast: false
       matrix:
@@ -66,7 +70,7 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init ${{ matrix.env }}
-        run: terraform -chdir=environments/${{ matrix.env }} init -backend=false -input=false # CI validation does not need backend initialization.
+        run: terraform -chdir=environments/${{ matrix.env }} init -backend=false -input=false 
 
       - name: Terraform Fmt ${{ matrix.env }}
         run: terraform -chdir=environments/${{ matrix.env }} fmt -check
@@ -76,10 +80,10 @@ jobs:
 
       - name: Terraform Plan ${{ matrix.env }} (non-prod)
         if: matrix.env != 'prod'
-        run: terraform -chdir=environments/${{ matrix.env }} plan -refresh=false -lock=false -input=false -no-color # Avoid interactive prompts and backend locking in CI.
+        run: terraform -chdir=environments/${{ matrix.env }} plan -refresh=false -lock=false -input=false -no-color 
 
       - name: Terraform Plan ${{ matrix.env }} (prod)
         if: matrix.env == 'prod'
         env:
           TF_VAR_rds_password: ${{ secrets.RDS_PASSWORD }}
-        run: terraform -chdir=environments/${{ matrix.env }} plan -refresh=false -lock=false -input=false -no-color # Prod still validates a real plan with the secret injected securely.
+        run: terraform -chdir=environments/${{ matrix.env }} plan -refresh=false -lock=false -input=false -no-color
