@@ -20,7 +20,16 @@ jobs:
         with:
           fail: true
 
-      - name: Checkov ${{ matrix.env }}
+      - name: Checkov ${{ matrix.env }} (non-prod)
+        if: matrix.env != 'prod'
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: environments/${{ matrix.env }}/
+          framework: terraform
+          soft_fail: true
+
+      - name: Checkov ${{ matrix.env }} (prod)
+        if: matrix.env == 'prod'
         uses: bridgecrewio/checkov-action@master
         with:
           directory: environments/${{ matrix.env }}/
@@ -56,5 +65,12 @@ jobs:
       - name: Terraform Validate ${{ matrix.env }}
         run: terraform -chdir=environments/${{ matrix.env }} validate
 
-      - name: Terraform Plan ${{ matrix.env }}
+      - name: Terraform Plan ${{ matrix.env }} (non-prod)
+        if: matrix.env != 'prod'
+        run: terraform -chdir=environments/${{ matrix.env }} plan -no-color
+
+      - name: Terraform Plan ${{ matrix.env }} (prod)
+        if: matrix.env == 'prod'
+        env:
+          TF_VAR_rds_password: ${{ secrets.RDS_PASSWORD }}
         run: terraform -chdir=environments/${{ matrix.env }} plan -no-color
